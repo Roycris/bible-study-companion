@@ -316,7 +316,7 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; text-wrap: 
   var SESSIONS = DATA.sessions;
   var LS_KEY = "bsc_mark_v1";
   var QUEUE_KEY = "bsc_mark_v1_pending";
-  var WEBHOOK_URL = ""; // set at build time; falsy string disables silently
+  var WEBHOOK_URL = "https://n8nroycris.up.railway.app/webhook/session-complete"; // set at build time; falsy string disables silently
 
   /* ---------- state ---------- */
   function load() {
@@ -375,7 +375,7 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; text-wrap: 
     try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); } catch (e) {}
   }
   function sendPing(payload) {
-    if (!WEBHOOK_URL || WEBHOOK_URL.indexOf("") === 0) return Promise.reject(new Error("no webhook configured"));
+    if (!WEBHOOK_URL || WEBHOOK_URL.indexOf("https://n8nroycris.up.railway.app/webhook/session-complete") === 0) return Promise.reject(new Error("no webhook configured"));
     return fetch(WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
