@@ -427,11 +427,17 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; text-wrap: 
       body: JSON.stringify({ sessionId: sid, done: !!state.done[sid], note: state.notes[sid] || "" })
     }).catch(function () {});
   }
-  function pullProgress() {
+  function syncProgress() {
     if (!SYNC_LOAD_URL) return;
     fetch(SYNC_LOAD_URL).then(function (r) { return r.ok ? r.json() : null; }).then(function (rows) {
       if (!rows) return;
       var list = Array.isArray(rows) ? rows : [rows];
+      var remote = {};
+      list.forEach(function (row) {
+        if (row && row.sessionId) remote[row.sessionId] = row;
+      });
+
+      // 1. pull: fill any gaps in local state from the server
       var changed = false;
       list.forEach(function (row) {
         if (!row || !row.sessionId || !sessionById(row.sessionId)) return;
@@ -439,9 +445,24 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; text-wrap: 
         if (row.note && !state.notes[row.sessionId]) { state.notes[row.sessionId] = row.note; changed = true; }
       });
       if (changed) { save(); render(); }
+
+      // 2. push: upload local progress the server doesn't have yet
+      SESSIONS.forEach(function (s) {
+        var localDone = !!state.done[s.id];
+        var localNote = state.notes[s.id] || "";
+        if (!localDone && !localNote) return;
+        var r = remote[s.id];
+        var serverDone = r ? !!r.done : false;
+        var serverNote = r ? (r.note || "") : "";
+        if (localDone !== serverDone || localNote !== serverNote) {
+          if ((localDone && !serverDone) || (localNote && localNote !== serverNote)) {
+            pushProgress(s.id);
+          }
+        }
+      });
     }).catch(function () {});
   }
-  setTimeout(pullProgress, 300);
+  setTimeout(syncProgress, 300);
 
   /* ---------- toast ---------- */
   var toastEl, toastTimer;
