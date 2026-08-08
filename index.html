@@ -316,7 +316,9 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; text-wrap: 
   var SESSIONS = DATA.sessions;
   var LS_KEY = "bsc_mark_v1";
   var QUEUE_KEY = "bsc_mark_v1_pending";
-  var WEBHOOK_URL = "https://n8nroycris.up.railway.app/webhook/session-complete"; // set at build time; falsy string disables silently
+  var WEBHOOK_URL = "https://n8nroycris.up.railway.app/webhook/session-complete";
+  var SYNC_SAVE_URL = "https://n8nroycris.up.railway.app/webhook/progress-save";
+  var SYNC_LOAD_URL = "https://n8nroycris.up.railway.app/webhook/progress-load";
 
   /* ---------- state ---------- */
   function load() {
@@ -375,7 +377,7 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; text-wrap: 
     try { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); } catch (e) {}
   }
   function sendPing(payload) {
-    if (!WEBHOOK_URL || WEBHOOK_URL.indexOf("https://n8nroycris.up.railway.app/webhook/session-complete") === 0) return Promise.reject(new Error("no webhook configured"));
+    if (!WEBHOOK_URL) return Promise.reject(new Error("no webhook configured"));
     return fetch(WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -415,6 +417,31 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; text-wrap: 
     setTimeout(flushQueue, 1200);
     window.addEventListener("online", flushQueue);
   }
+
+  /* ---------- cross-device progress sync ---------- */
+  function pushProgress(sid) {
+    if (!SYNC_SAVE_URL) return;
+    fetch(SYNC_SAVE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: sid, done: !!state.done[sid], note: state.notes[sid] || "" })
+    }).catch(function () {});
+  }
+  function pullProgress() {
+    if (!SYNC_LOAD_URL) return;
+    fetch(SYNC_LOAD_URL).then(function (r) { return r.ok ? r.json() : null; }).then(function (rows) {
+      if (!rows) return;
+      var list = Array.isArray(rows) ? rows : [rows];
+      var changed = false;
+      list.forEach(function (row) {
+        if (!row || !row.sessionId || !sessionById(row.sessionId)) return;
+        if (row.done && !state.done[row.sessionId]) { state.done[row.sessionId] = true; changed = true; }
+        if (row.note && !state.notes[row.sessionId]) { state.notes[row.sessionId] = row.note; changed = true; }
+      });
+      if (changed) { save(); render(); }
+    }).catch(function () {});
+  }
+  setTimeout(pullProgress, 300);
 
   /* ---------- toast ---------- */
   var toastEl, toastTimer;
@@ -617,6 +644,7 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; text-wrap: 
         clearTimeout(t);
         t = setTimeout(function () {
           state.notes[s.id] = pn.value; save();
+          pushProgress(s.id);
           savedLbl.textContent = "Saved";
           setTimeout(function () { savedLbl.textContent = ""; }, 1400);
         }, 400);
@@ -724,6 +752,7 @@ h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; text-wrap: 
       var nowDone;
       if (state.done[sid]) { delete state.done[sid]; nowDone = false; } else { state.done[sid] = true; nowDone = true; }
       save();
+      pushProgress(sid);
       t.classList.toggle("is-done", nowDone);
       t.textContent = nowDone ? "✓ Session complete" : "Mark this session complete";
       if (nowDone) { toast("Nicely done. See you next time."); notifySessionComplete(sid); }
